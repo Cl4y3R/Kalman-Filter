@@ -7,11 +7,12 @@ public:
     EKF(const Eigen::VectorXd &x_in, const Eigen::MatrixXd &S_in, const double &dt);
     ~EKF();
 
-    void predict(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const double eps);
+    void predict(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double eps);
     void predict(const Eigen::VectorXd &u, const Eigen::MatrixXd &F_);
-    void update(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u,const Eigen::VectorXd &z, const double eps);
+    void update(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double eps, const Eigen::VectorXd &z);
     void update(const Eigen::VectorXd &z, const Eigen::MatrixXd &H_);
-    Eigen::MatrixXd numJacobian(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&), const Eigen::VectorXd &x, const Eigen::VectorXd &u, const double &h);
+    Eigen::MatrixXd numJacobian(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&), const Eigen::VectorXd &x, const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double &h);
+    Eigen::VectorXd getEstimation();
 
 private:
 
@@ -55,12 +56,12 @@ EKF::~EKF(){
     std::cout<<"EKF destructed"<<std::endl;
 }
 
-void EKF::predict(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const double eps){
+void EKF::predict(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double eps){
     // numerical jacobian method
     if(init_flag_){
-        Eigen::VectorXd dx_ = func(x_, u);
+        Eigen::VectorXd dx_ = func(x_, u, param);
         x_ = x_ + dx_ * dt_;
-        F_ = numJacobian(func, x_, u, eps);
+        F_ = numJacobian(func, x_, u, param, eps);
         Eigen::MatrixXd N = S_.transpose() * F_.transpose();
         Eigen::MatrixXd M(N.rows() + Rq_.rows(), N.cols()); 
         Eigen::HouseholderQR<Eigen::MatrixXd> qr(M);
@@ -89,9 +90,9 @@ void EKF::predict(const Eigen::VectorXd &u, const Eigen::MatrixXd &F_in){
     
 }
 
-void EKF::update(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &z, const double eps){
+void EKF::update(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double eps, const Eigen::VectorXd &z){
     // numerical jacobian method
-    H_ = numJacobian(func, x_, u, eps);
+    H_ = numJacobian(func, x_, u, param, eps);
     Eigen::MatrixXd N = S_.transpose() * H_.transpose();
     Eigen::MatrixXd M(N.rows() + Rq_.rows(), N.cols()); 
     Eigen::HouseholderQR<Eigen::MatrixXd> qr(M);
@@ -119,8 +120,8 @@ void EKF::update(const Eigen::VectorXd &z, const Eigen::MatrixXd &H_in){
     S_ = (Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_) * P;
 }
 
-Eigen::MatrixXd numJacobian(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&), const Eigen::VectorXd &x, const Eigen::VectorXd &u, const double &h){
-    Eigen::VectorXd Z = func(x, u);
+Eigen::MatrixXd EKF::numJacobian(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&), const Eigen::VectorXd &x, const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double &h){
+    Eigen::VectorXd Z = func(x, u, param);
     Eigen::MatrixXd J(Z.size(), Z.size());
     J<< 0,0,
         0,0;
@@ -128,9 +129,12 @@ Eigen::MatrixXd numJacobian(Eigen::MatrixXd (*func)(const Eigen::VectorXd&, cons
         Eigen::VectorXd x_plus_h = x;
         double eps = std::max(h, h*std::fabs(x_plus_h(i)));
         x_plus_h(i) += eps;
-        Eigen::VectorXd Z_plus = func(x_plus_h, x);
+        Eigen::VectorXd Z_plus = func(x_plus_h, x, param);
         J.col(i) = (Z_plus - Z) / eps;
     }
 
     return J;
+}
+Eigen::VectorXd EKF::getEstimation(){
+    return x_;
 }
