@@ -49,9 +49,14 @@ private:
 EKF::EKF(const Eigen::VectorXd &x_in, const Eigen::MatrixXd &S_in, const Eigen::MatrixXd &Q, const Eigen::MatrixXd &R, const double &dt){
     dt_ = dt;
     x_ = x_in;
+    dx_ = Eigen::VectorXd::Zero(x_in.size());
     S_ = S_in;
     Rq_ = Q.llt().matrixL();
     Rr_ = R.llt().matrixL();
+    std::cout<<"Square root of Q(0,0): "<<Rq_(0,0)<<std::endl;
+    std::cout<<"Square root of Q(1,1): "<<Rq_(1,1)<<std::endl;
+    std::cout<<"Square root of R(0,0): "<<Rr_(0,0)<<std::endl;
+    std::cout<<"Square root of R(1,1): "<<Rr_(1,1)<<std::endl;
     std::cout<<"EKF initialized"<<std::endl;
 }
 
@@ -62,15 +67,14 @@ EKF::~EKF(){
 void EKF::predict(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double eps){
     // numerical jacobian method
     if(init_flag_){
-        Eigen::VectorXd dx_ = func(x_, u, param);
-        x_ = x_ + dx_ * dt_;
         F_ = numJacobian(func, x_, u, param, eps);
+        dx_ = func(x_, u, param);
+        x_ = x_ + dx_ * dt_;
         S_ = qrFactor(F_,S_,Rq_);
     }
     else{
         init_flag_ = true;
     }
-    
 }
 
 void EKF::predict(const Eigen::VectorXd &u, const Eigen::MatrixXd &F_in){
@@ -79,15 +83,11 @@ void EKF::predict(const Eigen::VectorXd &u, const Eigen::MatrixXd &F_in){
         F_ = F_in;
         dx_ = F_ * x_;
         x_ = x_ + dx_ * dt_;
-        Eigen::MatrixXd N = S_.transpose() * F_.transpose();
-        Eigen::MatrixXd M(N.rows() + Rq_.rows(), N.cols()); 
-        Eigen::HouseholderQR<Eigen::MatrixXd> qr(M);
-        S_ = qr.matrixQR().triangularView<Eigen::Upper>();
+        S_ = qrFactor(F_,S_,Rq_);
     }
     else{
         init_flag_ = true;
     }
-    
 }
 
 void EKF::update(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&),const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double eps, const Eigen::VectorXd &z){
@@ -96,32 +96,29 @@ void EKF::update(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::Ve
     Eigen::MatrixXd Sy = qrFactor(H_,S_,Rr_);
     Eigen::MatrixXd P = S_* S_.transpose();
     Eigen::MatrixXd Pxy = P * H_.transpose();
-    Eigen::MatrixXd K = Pxy * (Sy * Sy.transpose()).inverse();
-    Eigen::VectorXd y = z - H_ * x_;
+    Eigen::MatrixXd K = Pxy * ((Sy * Sy.transpose()).inverse());
+    Eigen::VectorXd y = z - func(x_, u, param);
     x_ = x_ + K * y;
-    S_ = (Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_) * P;
+    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_;
+    S_ = qrFactor(A,S_,K*Rr_);
 }
 
 void EKF::update(const Eigen::VectorXd &z, const Eigen::MatrixXd &H_in){
     // pre-calculated explicit jacobian
     H_ = H_in;
-    Eigen::MatrixXd N = S_.transpose() * H_.transpose();
-    Eigen::MatrixXd M(N.rows() + Rq_.rows(), N.cols()); 
-    Eigen::HouseholderQR<Eigen::MatrixXd> qr(M);
-	Eigen::MatrixXd Sy = qr.matrixQR().triangularView<Eigen::Upper>();
-    Eigen::MatrixXd P = S_.transpose() * S_;
+    Eigen::MatrixXd Sy = qrFactor(H_,S_,Rr_);
+    Eigen::MatrixXd P = S_* S_.transpose();
     Eigen::MatrixXd Pxy = P * H_.transpose();
-    Eigen::VectorXd K = Pxy * (Sy.transpose() * Sy).inverse();
+    Eigen::MatrixXd K = Pxy * ((Sy * Sy.transpose()).inverse());
     Eigen::VectorXd y = z - H_ * x_;
     x_ = x_ + K * y;
-    S_ = (Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_) * P;
+    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_;
+    S_ = qrFactor(A,S_,K*Rr_);
 }
 
 Eigen::MatrixXd EKF::numJacobian(Eigen::VectorXd (*func)(const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXd&), const Eigen::VectorXd &x, const Eigen::VectorXd &u, const Eigen::VectorXd &param, const double &h){
     Eigen::VectorXd Z = func(x, u, param);
-    Eigen::MatrixXd J(Z.size(), Z.size());
-    J<< 0,0,
-        0,0;
+    Eigen::MatrixXd J = Eigen::MatrixXd::Zero(Z.size(), x.size());
     for(int i = 0; i < Z.size(); i++){
         Eigen::VectorXd x_plus_h = x;
         double eps = std::max(h, h*std::fabs(x_plus_h(i)));
