@@ -12,4 +12,4 @@ for example the well-known Pacejka Magic Formula lateral tire force model:
 $F_y = D\cdot sin(C \cdot \arctan(B \cdot \alpha-E \cdot (B \cdot \alpha-\arctan(B \cdot \alpha))))$  
 Thus we can calculate the jacobian matrix numerically at every step.  
 The algorithm is validated by real vehicle test with 130km/h double lane change maneuver (estimated body side slip angle):  
-![Estimated Side Slip Angle](./results/example.png)
+![Estimated Side Slip Angle](example.png)
