@@ -132,7 +132,10 @@ void EKF::run(Eigen::VectorXd (*stateFunc)(const Eigen::VectorXd&, const Eigen::
         Eigen::VectorXd y = measureFunc(x_, u, param);
         Eigen::MatrixXd Sy = qrFactor(H_, S_, Rr_);
         Eigen::MatrixXd Pxy = P * H_.transpose();
-        K = Pxy * ((Sy * Sy.transpose()).inverse());
+        // K = Pxy * ((Sy * Sy.transpose()).inverse());
+        Eigen::MatrixXd SolFst = Sy.triangularView<Eigen::Lower>().solve(Pxy.transpose());
+        Eigen::MatrixXd SolSnd = Sy.transpose().triangularView<Eigen::Upper>().solve(SolFst);
+        K = SolSnd.transpose();
         Eigen::MatrixXd A = Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_;
         S_ = qrFactor(A, S_, K * Rr_);
         x_ = x_ + K * (z - y);
@@ -177,7 +180,10 @@ void EKF::run(Eigen::VectorXd (*stateFunc)(const Eigen::VectorXd&, const Eigen::
         Eigen::VectorXd y = measureFunc(x_, u, param);
         Eigen::MatrixXd Sy = qrFactor(H_, S_, Rr_);
         Eigen::MatrixXd Pxy = P * H_.transpose();
-        K = Pxy * ((Sy * Sy.transpose()).inverse());
+        // K = Pxy * ((Sy * Sy.transpose()).inverse());
+        Eigen::MatrixXd SolFst = Sy.triangularView<Eigen::Lower>().solve(Pxy.transpose());
+        Eigen::MatrixXd SolSnd = Sy.transpose().triangularView<Eigen::Upper>().solve(SolFst);
+        K = SolSnd.transpose();
         Eigen::MatrixXd A = Eigen::MatrixXd::Identity(x_.size(), x_.size()) - K * H_;
         S_ = qrFactor(A, S_, K * Rr_);
         x_ = x_ + K * (z - y);
